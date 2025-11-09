@@ -11,7 +11,10 @@ const create = async () => {
 
 <template>
   <div class="size-full h-screen flex flex-col">
-    <div class="w-full flex flex-row justify-end md:justify-start px-10 py-5">
+    <div class="w-full flex flex-row items-center gap-2 justify-end md:justify-start px-10 py-5">
+      <div class="flex flex-row items-center">
+        <img src="/logo.png" alt="ChatTutor" width="32" height="32" />
+      </div>
       <span class="text-xl font-semibold text-gray-400 select-none">ChatTutor</span>
     </div>
     <div class="size-full h-full flex flex-col gap-10 items-center justify-center py-10">
