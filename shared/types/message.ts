@@ -14,6 +14,8 @@ export type AssistantMessage = {
 export type DrawMessage = {
   type: 'draw'
   page: string
+  input?: string
+  result?: string
 }
 export type SetMermaidMessage = {
   type: 'set-mermaid'
@@ -73,12 +75,18 @@ export const createMessageResolver = (
           page: action.page!,
           id: uuid(),
         })
-      } else if (action.type === 'update-canvas') {
+      } else if (action.type === 'draw-start') {
         push({
           type: 'draw',
-          page: action.page!,
+          page: action.options.page!,
+          input: action.options.input!,
           id: uuid(),
+          running: true,
         })
+      } else if (action.type === 'draw-end') {
+        const messages = get()
+        ; (<Message>messages.at(-1)!).running = false
+        ; (<DrawMessage>messages.at(-1)!).result = action.options.result!
       }
     }
   }

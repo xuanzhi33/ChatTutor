@@ -15,7 +15,7 @@ defineProps<{
 <template>
   <div class="text-gray-600 px-2 markdown flex flex-col"
     :class="{ 'border border-rounded-lg': border, [classes]: true }">
-    <div class="flex flex-row items-center">
+    <div class="flex flex-row items-center gap-2">
       <div v-if="running" class="size-4 flex justify-center items-center animate-spin">
         <FontAwesomeIcon :icon="faSpinner" />
       </div>

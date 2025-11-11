@@ -1,8 +1,8 @@
 import type { CanvasPage } from '@chat-tutor/canvas'
+import type { FullizeAction, Action } from '@chat-tutor/shared'
 import type { Tool } from 'xsai'
 import { tool } from 'xsai'
 import { type } from 'arktype'
-import type { Action, FullizeAction } from '@chat-tutor/shared'
 import type { AgentChunker } from '../types'
 
 export type CanvasPageUpdateAction = Action<{
@@ -36,7 +36,6 @@ export const getPainterTools = async (
         options: { range, domain },
         page: page.id,
       } as FullizeAction<CanvasPageUpdateAction>)
-      
       return {
         success: true,
         message: 'Canvas set successfully',

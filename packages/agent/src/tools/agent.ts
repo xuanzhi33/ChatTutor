@@ -1,4 +1,4 @@
-import type { FullizeAction, Page } from '@chat-tutor/shared'
+import type { Action, FullizeAction, Page } from '@chat-tutor/shared'
 import { PageType } from '@chat-tutor/shared'
 import type { Tool, Message } from 'xsai'
 import { tool } from 'xsai'
@@ -8,6 +8,15 @@ import type { MermaidPage, MermaidPageAction } from '@chat-tutor/mermaid'
 import { createPainterAgent } from '../painter'
 import type { AgentChunker } from '../types'
 import type { PageCreationAction, PageNoteAction } from '..'
+
+export type CanvasPageDrawStartAction = Action<{
+  page: string
+  input: string
+}, 'draw-start'>
+export type CanvasPageDrawEndAction = Action<{
+  page: string
+  result: string
+}, 'draw-end'>
 
 export const getAgentTools = async (
   { pages, painterOptions, chunker }: {
@@ -170,6 +179,10 @@ export const getAgentTools = async (
       input: type('string').describe('The natural language input to draw on the page'),
     }),
     execute: async ({ page, input }) => {
+      chunker({
+        type: 'draw-start',
+        options: { page, input },
+      } as CanvasPageDrawStartAction)
       const targetPage = pages.find(p => p.id === page)
       if (!targetPage) {
         return {
@@ -190,6 +203,10 @@ export const getAgentTools = async (
         }
         chunker(fullChunk)
       })
+      chunker({
+        type: 'draw-end',
+        options: { page, result },
+      } as CanvasPageDrawEndAction)
       return {
         success: true,
         message: result,

@@ -1,4 +1,4 @@
-import type { CanvasPage, Element } from '@chat-tutor/canvas'
+import type { CanvasPage } from '@chat-tutor/canvas'
 import type { AgentChunker, BaseAgentOptions } from './types'
 import { message, streamText, type StreamTextEvent } from 'xsai'
 import { painter } from './prompts'
@@ -34,15 +34,8 @@ export const createPainterAgent = (options: PainterAgentOptions) => {
       options.messages.length = 0
       options.messages.push(...ms)
     })
-    for await (const chunk of <ReadableStream<StreamTextEvent>>fullStream) {
-      if (chunk.type === 'tool-call') {
-        if (chunk.toolName === 'add') {
-          const { elements } = JSON.parse(chunk.args) as { elements: Element[] }
-          for (const element of elements) {
-            chunker({ type: 'element', options: element })
-          }
-        }
-      }
+    for await (const _ of <ReadableStream<StreamTextEvent>>fullStream) {
+      // TODO: handle tool calls
     }
     const lastMessage = options.messages.at(-1)
     if (lastMessage && lastMessage.role === 'assistant') {
