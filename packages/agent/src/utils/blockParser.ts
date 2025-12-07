@@ -1,7 +1,13 @@
-import type { FullAction, FullizeAction, Page } from '@chat-tutor/shared'
+import type { Action, FullAction, Page } from '@chat-tutor/shared'
 import type { PageCreationAction } from '@chat-tutor/agent'
-import { PageType } from '@chat-tutor/shared'
-import type { MermaidPage, MermaidPageAction } from '@chat-tutor/mermaid'
+import type { MermaidPage } from '@chat-tutor/mermaid'
+import { mermaidBlockResolver } from './mermaid'
+import { noteBlockResolver } from './note'
+
+export type BlockResolver = (context: {
+  page: Page
+  content: string
+}, emit: Emit) => Action | FullAction
 
 type Emit = (action: FullAction | PageCreationAction) => void
 
@@ -12,16 +18,20 @@ export interface BlockParserOptions {
 }
 
 type BlockMeta = {
-  type: 'mermaid' | 'note'
+  type: string
   page: string
   title?: string
 }
 
 const fenceStart = '```'
-const mermaidStart = /^```\s*(mermaid|note)\s*\[([^\]\s|;]+)(?:;([^\]]+))?\](?:\|([^\n`]+))?[\t ]*(?:\r?\n)?/m
-const mermaidEnd = /^```[\t ]*(?:\r?\n)?/
+const blockStart = /^```\s*(mermaid|note)\s*\[([^\]\s|;]+)(?:;([^\]]+))?\](?:\|([^\n`]+))?[\t ]*(?:\r?\n)?/m
+const blockEnd = /^```[\t ]*(?:\r?\n)?/
 
 export const createBlockParser = ({ pages, emit, emitText }: BlockParserOptions) => {
+  const blockResolvers = new Map<string, BlockResolver>()
+
+  blockResolvers.set('mermaid', mermaidBlockResolver)
+  blockResolvers.set('note', noteBlockResolver)
   let buffer = ''
   // TODO: extend to note and code etc...
   let blockMeta: BlockMeta | null = null
@@ -74,7 +84,7 @@ export const createBlockParser = ({ pages, emit, emitText }: BlockParserOptions)
   }
 
   // Check if page exists, if not create it
-  const ensurePage = (id: string, title?: string, type = PageType.MERMAID) => {
+  const ensurePage = (id: string, type: string, title?: string) => {
     let page = pages.find(p => p.id === id)
     if (!page) {
       page = {
@@ -108,18 +118,12 @@ export const createBlockParser = ({ pages, emit, emitText }: BlockParserOptions)
       return
     }
     // Handle mermaid block
-    if (block.type === 'mermaid') {
-      const page = ensurePage(block.page, block.title, PageType.MERMAID) as MermaidPage
-      const action: FullizeAction<MermaidPageAction> = {
-        type: 'set-mermaid',
-        options: { content: trimmedContent },
-        page: block.page,
-      }
-      page.steps.push(action)
-      emit(action)
-      // For debug purpose, also output the mermaid content as text
-      // emitText(trimmedContent)
+    const resolver = blockResolvers.get(block.type)
+    if (!resolver) {
+      return blockMeta = null
     }
+    const page = ensurePage(block.page, block.type, block.title) as MermaidPage
+    resolver({ page, content: trimmedContent }, emit)
     blockMeta = null
   }
       
@@ -144,7 +148,7 @@ export const createBlockParser = ({ pages, emit, emitText }: BlockParserOptions)
         buffer = buffer.slice(fenceIdx)
       }
       // Match mermaid head
-      const headMatch = buffer.match(mermaidStart)
+      const headMatch = buffer.match(blockStart)
       // Not get the full head yet
       if (!headMatch || headMatch.index !== 0) return
       // Full head matched, extract page meta info
@@ -161,7 +165,7 @@ export const createBlockParser = ({ pages, emit, emitText }: BlockParserOptions)
     // Found the end fence
     const content = buffer.slice(0, endIdx)
     const tail = buffer.slice(endIdx)
-    const endMatch = tail.match(mermaidEnd)
+    const endMatch = tail.match(blockEnd)
     if (!endMatch || endMatch.index !== 0) return
     // Full block matched
     buffer = tail.slice(endMatch[0].length)
