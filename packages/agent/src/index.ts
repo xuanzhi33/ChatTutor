@@ -71,14 +71,6 @@ export const createAgent = (options: AgentOptions) => {
       options.messages.push(...ms)
     })
     for await (const chunk of <ReadableStream<string>>textStream) {
-      // chunker({
-      //   type: 'text',
-      //   options: { chunk },
-      // } as TextChunkAction)
-      // chunker({
-      //   type: 'text',
-      //   options: { chunk },
-      // } as TextChunkAction)
       parser.handle({
         type: 'text',
         options: { chunk },
