@@ -1,0 +1,358 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger when pushing tags starting with 'v'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history to generate changelog
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.1
+      
+      - name: Get version from tag
+        id: tag_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+      
+      - name: Get previous tag
+        id: previous_tag
+        run: |
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -z "$PREVIOUS_TAG" ]; then
+            PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
+          fi
+          echo "previous_tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
+          echo "Previous tag: $PREVIOUS_TAG"
+      
+      - name: Generate changelog
+        id: changelog
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PREVIOUS_TAG="${{ steps.previous_tag.outputs.previous_tag }}"
+          CURRENT_TAG="${{ github.ref }}"
+          
+          # Define emoji mapping for commit types
+          declare -A EMOJI_MAP=(
+            ["feat"]="✨"
+            ["fix"]="🐛"
+            ["docs"]="📝"
+            ["style"]="💄"
+            ["refactor"]="♻️"
+            ["perf"]="⚡"
+            ["test"]="✅"
+            ["build"]="🔨"
+            ["ci"]="👷"
+            ["chore"]="🔧"
+            ["revert"]="⏪"
+            ["security"]="🔒"
+            ["deps"]="📦"
+            ["config"]="⚙️"
+            ["types"]="🏷️"
+            ["i18n"]="🌐"
+            ["ui"]="🎨"
+            ["ux"]="💡"
+            ["api"]="🔌"
+            ["db"]="🗄️"
+            ["docker"]="🐳"
+            ["release"]="🚀"
+          )
+          
+          # Get all commits
+          if [ "$PREVIOUS_TAG" = "" ] || [ "$PREVIOUS_TAG" = "$(git rev-list --max-parents=0 HEAD)" ]; then
+            COMMITS=$(git log --pretty=format:"%H|%s|%an|%ae" --no-merges 2>/dev/null || echo "")
+          else
+            COMMITS=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"%H|%s|%an|%ae" --no-merges 2>/dev/null || echo "")
+          fi
+          
+          # Categorize commits
+          FEATURES=""
+          FIXES=""
+          DOCS=""
+          STYLE=""
+          REFACTOR=""
+          PERF=""
+          TESTS=""
+          BUILD=""
+          CI=""
+          CHORE=""
+          OTHER=""
+          
+          # Store all contributors
+          declare -A CONTRIBUTORS
+          # Store GitHub username mapping for contributors
+          declare -A CONTRIBUTOR_GITHUB_USERS
+          
+          # First pass: collect all unique contributors
+          if [ -n "$COMMITS" ]; then
+            while IFS='|' read -r HASH MESSAGE AUTHOR EMAIL; do
+              [ -z "$HASH" ] && continue
+              CONTRIBUTORS["$AUTHOR|$EMAIL"]=1
+            done <<< "$COMMITS"
+          fi
+          
+          # Batch lookup GitHub usernames for all contributors
+          echo "Looking up GitHub usernames for contributors..."
+          for CONTRIBUTOR in "${!CONTRIBUTORS[@]}"; do
+            IFS='|' read -r AUTHOR EMAIL <<< "$CONTRIBUTOR"
+            GITHUB_USER=""
+            
+            if [ -n "$GITHUB_TOKEN" ]; then
+              # Try by email first
+              API_RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                "https://api.github.com/search/users?q=${EMAIL}+in:email" 2>/dev/null || echo "")
+              
+              if [ -n "$API_RESPONSE" ]; then
+                GITHUB_USER=$(echo "$API_RESPONSE" | grep -o '"login":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
+              fi
+              
+              # Try by name if email search failed
+              if [ -z "$GITHUB_USER" ]; then
+                API_RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                  "https://api.github.com/search/users?q=${AUTHOR}+in:name" 2>/dev/null || echo "")
+                GITHUB_USER=$(echo "$API_RESPONSE" | grep -o '"login":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
+              fi
+              
+              # Small delay to avoid rate limiting
+              sleep 0.1
+            fi
+            
+            CONTRIBUTOR_GITHUB_USERS["$AUTHOR|$EMAIL"]="$GITHUB_USER"
+          done
+          
+          # Second pass: process commits and format with contributors
+          if [ -n "$COMMITS" ]; then
+            while IFS='|' read -r HASH MESSAGE AUTHOR EMAIL; do
+              # Skip empty lines
+              [ -z "$HASH" ] && continue
+              
+              # Extract commit type (conventional commits format)
+              TYPE=$(echo "$MESSAGE" | sed -E 's/^([^:\(]+)(\(.+\))?:.*/\1/' | tr '[:upper:]' '[:lower:]' | xargs)
+              
+              # Default to 'other' if no type prefix
+              if [ -z "$TYPE" ] || [ "$TYPE" = "$MESSAGE" ]; then
+                TYPE="other"
+              fi
+              
+              # Get emoji
+              EMOJI="${EMOJI_MAP[$TYPE]:-📌}"
+              
+              # Clean commit message (remove type prefix)
+              if echo "$MESSAGE" | grep -qE '^[^:]+(\(.+\))?:'; then
+                CLEAN_MSG=$(echo "$MESSAGE" | sed -E 's/^[^:]+(\(.+\))?:\s*//')
+              else
+                CLEAN_MSG="$MESSAGE"
+              fi
+              
+              # Escape special characters
+              CLEAN_MSG=$(echo "$CLEAN_MSG" | sed 's/"/\\"/g' | sed 's/`/\\`/g')
+              
+              # Get GitHub username for this contributor
+              GITHUB_USER="${CONTRIBUTOR_GITHUB_USERS["$AUTHOR|$EMAIL"]}"
+              
+              # Format contributor mention
+              if [ -n "$GITHUB_USER" ]; then
+                CONTRIBUTOR_MENTION=" (@${GITHUB_USER})"
+              else
+                CONTRIBUTOR_MENTION=" (${AUTHOR})"
+              fi
+              
+              # Format commit line with contributor
+              COMMIT_LINE="$EMOJI $CLEAN_MSG${CONTRIBUTOR_MENTION}"
+              
+              # Categorize
+              case "$TYPE" in
+                feat|feature)
+                  FEATURES="${FEATURES}- ${COMMIT_LINE}\n"
+                  ;;
+                fix|bugfix)
+                  FIXES="${FIXES}- ${COMMIT_LINE}\n"
+                  ;;
+                docs|doc)
+                  DOCS="${DOCS}- ${COMMIT_LINE}\n"
+                  ;;
+                style)
+                  STYLE="${STYLE}- ${COMMIT_LINE}\n"
+                  ;;
+                refactor)
+                  REFACTOR="${REFACTOR}- ${COMMIT_LINE}\n"
+                  ;;
+                perf|performance)
+                  PERF="${PERF}- ${COMMIT_LINE}\n"
+                  ;;
+                test|tests)
+                  TESTS="${TESTS}- ${COMMIT_LINE}\n"
+                  ;;
+                build)
+                  BUILD="${BUILD}- ${COMMIT_LINE}\n"
+                  ;;
+                ci)
+                  CI="${CI}- ${COMMIT_LINE}\n"
+                  ;;
+                chore|misc)
+                  CHORE="${CHORE}- ${COMMIT_LINE}\n"
+                  ;;
+                *)
+                  OTHER="${OTHER}- ${COMMIT_LINE}\n"
+                  ;;
+              esac
+            done <<< "$COMMITS"
+          fi
+          
+          # Build changelog
+          CHANGELOG="# Release Notes - v${{ steps.tag_version.outputs.version }}\n\n"
+          
+          # Check if there are any changes
+          HAS_CHANGES=false
+          
+          if [ -n "$FEATURES" ]; then
+            CHANGELOG="${CHANGELOG}## ✨ New Features\n${FEATURES}\n"
+            HAS_CHANGES=true
+          fi
+          
+          if [ -n "$FIXES" ]; then
+            CHANGELOG="${CHANGELOG}## 🐛 Bug Fixes\n${FIXES}\n"
+            HAS_CHANGES=true
+          fi
+          
+          if [ -n "$PERF" ]; then
+            CHANGELOG="${CHANGELOG}## ⚡ Performance Improvements\n${PERF}\n"
+            HAS_CHANGES=true
+          fi
+          
+          if [ -n "$REFACTOR" ]; then
+            CHANGELOG="${CHANGELOG}## ♻️ Code Refactoring\n${REFACTOR}\n"
+            HAS_CHANGES=true
+          fi
+          
+          if [ -n "$DOCS" ]; then
+            CHANGELOG="${CHANGELOG}## 📝 Documentation\n${DOCS}\n"
+            HAS_CHANGES=true
+          fi
+          
+          if [ -n "$STYLE" ]; then
+            CHANGELOG="${CHANGELOG}## 💄 Style Changes\n${STYLE}\n"
+            HAS_CHANGES=true
+          fi
+          
+          if [ -n "$TESTS" ]; then
+            CHANGELOG="${CHANGELOG}## ✅ Tests\n${TESTS}\n"
+            HAS_CHANGES=true
+          fi
+          
+          if [ -n "$BUILD" ]; then
+            CHANGELOG="${CHANGELOG}## 🔨 Build System\n${BUILD}\n"
+            HAS_CHANGES=true
+          fi
+          
+          if [ -n "$CI" ]; then
+            CHANGELOG="${CHANGELOG}## 👷 CI/CD\n${CI}\n"
+            HAS_CHANGES=true
+          fi
+          
+          if [ -n "$CHORE" ]; then
+            CHANGELOG="${CHANGELOG}## 🔧 Chores\n${CHORE}\n"
+            HAS_CHANGES=true
+          fi
+          
+          if [ -n "$OTHER" ]; then
+            CHANGELOG="${CHANGELOG}## 📌 Other Changes\n${OTHER}\n"
+            HAS_CHANGES=true
+          fi
+          
+          # Add message if no changes
+          if [ "$HAS_CHANGES" = false ]; then
+            CHANGELOG="${CHANGELOG}No code changes in this release.\n\n"
+          fi
+          
+          # Add contributors section
+          CHANGELOG="${CHANGELOG}\n## 👥 Contributors\n\n"
+          
+          # Create temporary file to store contributor information
+          CONTRIBUTOR_FILE=$(mktemp)
+          
+          # Get GitHub usernames and collect contributor information
+          for CONTRIBUTOR in "${!CONTRIBUTORS[@]}"; do
+            IFS='|' read -r AUTHOR EMAIL <<< "$CONTRIBUTOR"
+            GITHUB_USER=""
+            
+            # Method 1: Try to find user via GitHub API (by email)
+            if [ -n "$GITHUB_TOKEN" ]; then
+              API_RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                "https://api.github.com/search/users?q=${EMAIL}+in:email" 2>/dev/null || echo "")
+              
+              if [ -n "$API_RESPONSE" ]; then
+                GITHUB_USER=$(echo "$API_RESPONSE" | grep -o '"login":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
+              fi
+              
+              # Method 2: If method 1 fails, try searching by commit author name
+              if [ -z "$GITHUB_USER" ]; then
+                API_RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                  "https://api.github.com/search/users?q=${AUTHOR}+in:name" 2>/dev/null || echo "")
+                GITHUB_USER=$(echo "$API_RESPONSE" | grep -o '"login":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
+              fi
+            fi
+            
+            # Format contributor information and write to temporary file
+            if [ -n "$GITHUB_USER" ]; then
+              echo "- @${GITHUB_USER}" >> "$CONTRIBUTOR_FILE"
+            else
+              echo "- ${AUTHOR}" >> "$CONTRIBUTOR_FILE"
+            fi
+          done
+          
+          # Sort and deduplicate contributor list
+          if [ -f "$CONTRIBUTOR_FILE" ] && [ -s "$CONTRIBUTOR_FILE" ]; then
+            SORTED_CONTRIBUTORS=$(sort -u "$CONTRIBUTOR_FILE")
+            CONTRIBUTOR_LIST=$(echo "$SORTED_CONTRIBUTORS")
+            CHANGELOG="${CHANGELOG}${CONTRIBUTOR_LIST}\n\nThanks to all contributors! 🙏\n"
+            rm -f "$CONTRIBUTOR_FILE"
+          else
+            CHANGELOG="${CHANGELOG}Thanks to all contributors! 🙏\n"
+          fi
+          
+          # Output to file (use printf to properly handle newlines)
+          printf "%b" "$CHANGELOG" > CHANGELOG.md
+          
+          # Save to output (for subsequent steps)
+          {
+            echo 'changelog<<EOF'
+            printf "%b" "$CHANGELOG"
+            echo EOF
+          } >> $GITHUB_OUTPUT
+          
+          echo "Changelog generated successfully"
+          cat CHANGELOG.md
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release v${{ steps.tag_version.outputs.version }}
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+
