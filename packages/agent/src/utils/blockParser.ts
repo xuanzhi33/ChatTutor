@@ -25,7 +25,7 @@ type BlockMeta = {
 }
 
 const fenceStart = '```'
-const blockStart = /^```\s*(mermaid|note|ggbscript)\s*\[([^\]\s|;]+)(?:;([^\]]+))?\](?:\|([^\n`]+))?[\t ]*(?:\r?\n)?/m
+const blockStart = /^```\s*(mermaid|note|ggbscript|geogebra)\s*\[([^\]\s|;]+)(?:;([^\]]+))?\](?:\|([^\n`]+))?[\t ]*(?:\r?\n)?/m
 const blockEnd = /^```[\t ]*(?:\r?\n)?/
 
 export const createBlockParser = ({ pages, emit, emitText }: BlockParserOptions) => {
@@ -43,6 +43,10 @@ export const createBlockParser = ({ pages, emit, emitText }: BlockParserOptions)
     pageType: PageType.TEXT,
   })
   blockResolvers.set('ggbscript', {
+    resolver: ggbBlockResolver,
+    pageType: PageType.GGB,
+  })
+  blockResolvers.set('geogebra', {
     resolver: ggbBlockResolver,
     pageType: PageType.GGB,
   })
