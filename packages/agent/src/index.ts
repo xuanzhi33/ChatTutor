@@ -9,6 +9,14 @@ export type TextChunkAction = Action<{ chunk: string }, 'text'>
 export type PageCreationAction<T extends Page = Page> = Action<T, 'page'>
 export type PageNoteAction = FullAction<{ content: string }, 'note'>
 
+// Start/End actions for note, mermaid, and ggb
+export type NoteStartAction = FullAction<{ page: string }, 'note-start'>
+export type NoteEndAction = FullAction<{ page: string }, 'note-end'>
+export type MermaidStartAction = FullAction<{ page: string }, 'mermaid-start'>
+export type MermaidEndAction = FullAction<{ page: string }, 'mermaid-end'>
+export type GGBStartAction = FullAction<{ page: string }, 'ggb-start'>
+export type GGBEndAction = FullAction<{ page: string }, 'ggb-end'>
+
 export interface AgentOptions extends BaseAgentOptions {
   pages: Page[]
 }

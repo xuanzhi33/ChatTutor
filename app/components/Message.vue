@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { Message } from '#shared/types'
+import type { Message, GGBMessage } from '#shared/types'
+import { messageIcons } from '../utils/message-icons'
 
 const { message } = defineProps<{
   message: Message
@@ -11,15 +12,21 @@ const content = computed(() => {
   if (['assistant', 'user'].includes(message.type)) {
     return (<AssistantMessage>message).content
   } else if (message.type === 'draw') {
-    return `Painted on **${message.page}**`
+    return `Painted on ${message.page}`
   } else if (message.type === 'set-mermaid') {
-    return `Set mermaid on **${message.page}**`
+    return message.running ? `Setting mermaid on ${message.page}...` : `Mermaid set on ${message.page}`
   } else if (message.type === 'note') {
-    return `Note on **${message.page}**`
+    return message.running ? `Adding note to ${message.page}...` : `Note added to ${message.page}`
+  } else if (message.type === 'ggb') {
+    return message.running ? `Running GeoGebra script on ${message.page}...` : `GeoGebra script executed on ${message.page}`
   } else if (message.type === 'page') {
-    return `Created a **${emojiMap[message.pageType]}${message.pageType.toUpperCase()}** page`
+    return `Created ${message.pageType.toUpperCase()} page: ${message.page}`
   }
   return ''
+})
+
+const isMarkdown = computed(() => {
+  return ['assistant', 'user'].includes(message.type)
 })
 
 const running = computed(() => {
@@ -27,30 +34,19 @@ const running = computed(() => {
   return message.running ?? false
 })
 
+const icon = computed(() => {
+  return messageIcons[message.type]
+})
+
 const handleClick = () => {
-  if (['page', 'draw', 'set-mermaid', 'note'].includes(message.type)) {
-    page.value = (message as PageMessage).page
+  if (['page', 'draw', 'set-mermaid', 'note', 'ggb'].includes(message.type)) {
+    page.value = (message as PageMessage | NoteMessage | SetMermaidMessage | DrawMessage | GGBMessage).page
   }
 }
-
-const classes = computed(() => {
-  const text = ' font-mono text-gray-100 flex items-center justify-center cursor-pointer hover:opacity-60 select-none'
-  if (message.type === 'user') return 'border-gray-300 dark:border-gray-700 border'
-  if (message.type === 'draw') return 'border-2 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950' + text
-  if (message.type === 'set-mermaid') return 'border-2 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950' + text
-  if (message.type === 'note') return 'border-2 border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950' + text
-  if (message.type === 'page') return 'border-2 border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950' + text
-  return ''
-})
 </script>
 
 <template>
-  <MessageBox
-    :content="content"
-    :border="message.type !== 'assistant'"
-    :classes="classes"
-    :running="running"
-    :images="message.type === 'user' ? message.images : []"
-    @click="handleClick"
-  />
+  <MessageBox :content="content" :icon="icon" :running="running" :images="message.type === 'user' ? message.images : []"
+    :clickable="['page', 'draw', 'set-mermaid', 'note', 'ggb'].includes(message.type)" :is-markdown="isMarkdown"
+    :show-border="message.type === 'user'" @click="handleClick" />
 </template>

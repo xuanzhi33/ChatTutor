@@ -23,7 +23,11 @@ export const useBoard = () => {
     if (action.type === 'page') {
       handlePageCreationAction(action as unknown as PageCreationAction)
     } else {
+      // Skip text actions and start/end actions - they don't go into steps
       if (action.type === 'text') return
+      if (action.type === 'note-start' || action.type === 'note-end') return
+      if (action.type === 'mermaid-start' || action.type === 'mermaid-end') return
+      if (action.type === 'ggb-start' || action.type === 'ggb-end') return
       const p = currentPages.value.find(p => p.id === action.page)
       if (!p) return
       p.steps.push(action as never)

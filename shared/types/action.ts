@@ -1,4 +1,15 @@
-import type { PageCreationAction, PageNoteAction, TextChunkAction, MermaidPageAction } from '@chat-tutor/agent'
+import type {
+  PageCreationAction,
+  PageNoteAction,
+  TextChunkAction,
+  MermaidPageAction,
+  NoteStartAction,
+  NoteEndAction,
+  MermaidStartAction,
+  MermaidEndAction,
+  GGBStartAction,
+  GGBEndAction,
+} from '@chat-tutor/agent'
 import type { FullizeAction } from '@chat-tutor/shared'
 
 export type AllAction = 
@@ -6,3 +17,9 @@ export type AllAction =
   | TextChunkAction
   | FullizeAction<MermaidPageAction>
   | PageNoteAction
+  | NoteStartAction
+  | NoteEndAction
+  | MermaidStartAction
+  | MermaidEndAction
+  | GGBStartAction
+  | GGBEndAction

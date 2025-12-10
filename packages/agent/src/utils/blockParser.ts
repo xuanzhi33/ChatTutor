@@ -1,5 +1,13 @@
 import { PageType, type Action, type FullAction, type Page } from '@chat-tutor/shared'
-import type { PageCreationAction } from '@chat-tutor/agent'
+import type {
+  PageCreationAction,
+  NoteStartAction,
+  NoteEndAction,
+  MermaidStartAction,
+  MermaidEndAction,
+  GGBStartAction,
+  GGBEndAction,
+} from '@chat-tutor/agent'
 import type { MermaidPage } from './mermaid'
 import { mermaidBlockResolver } from './mermaid'
 import { noteBlockResolver } from './note'
@@ -121,6 +129,52 @@ export const createBlockParser = ({ pages, emit, emitText }: BlockParserOptions)
     return page
   }
 
+  // Emit start action for a block
+  const emitStartAction = (blockType: string, pageId: string) => {
+    if (blockType === 'note') {
+      emit({
+        type: 'note-start',
+        options: { page: pageId },
+        page: pageId,
+      } as NoteStartAction)
+    } else if (blockType === 'mermaid') {
+      emit({
+        type: 'mermaid-start',
+        options: { page: pageId },
+        page: pageId,
+      } as MermaidStartAction)
+    } else if (blockType === 'ggbscript' || blockType === 'geogebra') {
+      emit({
+        type: 'ggb-start',
+        options: { page: pageId },
+        page: pageId,
+      } as GGBStartAction)
+    }
+  }
+
+  // Emit end action for a block
+  const emitEndAction = (blockType: string, pageId: string) => {
+    if (blockType === 'note') {
+      emit({
+        type: 'note-end',
+        options: { page: pageId },
+        page: pageId,
+      } as NoteEndAction)
+    } else if (blockType === 'mermaid') {
+      emit({
+        type: 'mermaid-end',
+        options: { page: pageId },
+        page: pageId,
+      } as MermaidEndAction)
+    } else if (blockType === 'ggbscript' || blockType === 'geogebra') {
+      emit({
+        type: 'ggb-end',
+        options: { page: pageId },
+        page: pageId,
+      } as GGBEndAction)
+    }
+  }
+
   // Complete the mermaid block
   const finishBlock = (content: string) => {
     if (!blockMeta) return
@@ -139,7 +193,10 @@ export const createBlockParser = ({ pages, emit, emitText }: BlockParserOptions)
       return blockMeta = null
     }
     const page = ensurePage(block.page, pageType, block.title)
+    // Emit the actual action with data (this will be added to steps)
     resolver({ page, content: trimmedContent }, emit)
+    // Emit end action
+    emitEndAction(block.type, block.page)
     blockMeta = null
   }
       
@@ -171,6 +228,8 @@ export const createBlockParser = ({ pages, emit, emitText }: BlockParserOptions)
       const [prefix, type, pageId, title] = headMatch
       buffer = buffer.slice(prefix.length)
       blockMeta = { type: type as BlockMeta['type'], page: pageId, title }
+      // Emit start action when block starts
+      emitStartAction(type, pageId)
       return
     }
     // Inside a block, look for end fence

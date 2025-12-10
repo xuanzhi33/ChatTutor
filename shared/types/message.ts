@@ -30,7 +30,19 @@ export type PageMessage = {
   page: string
   pageType: PageType
 }
-export type Message = (UserMessage | AssistantMessage | DrawMessage | SetMermaidMessage | NoteMessage | PageMessage) & {
+export type GGBMessage = {
+  type: 'ggb'
+  page: string
+}
+export type Message = (
+  UserMessage
+  | AssistantMessage
+  | DrawMessage
+  | SetMermaidMessage
+  | NoteMessage
+  | PageMessage
+  | GGBMessage
+) & {
   id: string
   running?: boolean
 }
@@ -41,6 +53,21 @@ export const createMessageResolver = (
   uuid: () => string = v4,
 ) => {
   let divided: boolean = true
+  // Track running messages by page and action type
+  const runningMessages = new Map<string, Message>()
+
+  const findRunningMessage = (page: string, type: 'note' | 'set-mermaid' | 'ggb'): Message | undefined => {
+    const messages = get()
+    // Find the most recent running message of the given type for the given page
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i]
+      if (msg && 'page' in msg && msg.page === page && msg.type === type && msg.running === true) {
+        return msg
+      }
+    }
+    return undefined
+  }
+
   return (action: AllAction) => {
     if (action.type === 'text') {
       if (divided) {
@@ -57,11 +84,20 @@ export const createMessageResolver = (
     } else {
       divided = true
       if (action.type === 'note') {
-        push({
-          type: 'note',
-          page: action.page!,
-          id: uuid(),
-        })
+        // Check if there's already a running note message for this page
+        const pageId = action.page!
+        const existingMessage = findRunningMessage(pageId, 'note')
+        if (existingMessage) {
+          // Update existing message, keep it running until note-end
+          // Don't create a new message
+        } else {
+        // No running message, create a new one (for backward compatibility)
+          push({
+            type: 'note',
+            page: pageId,
+            id: uuid(),
+          })
+        }
       } else if (action.type === 'page') {
         push({
           type: 'page',
@@ -70,23 +106,88 @@ export const createMessageResolver = (
           id: uuid(),
         })
       } else if (action.type === 'set-mermaid') {
-        push({
-          type: 'set-mermaid',
-          page: action.page!,
-          id: uuid(),
-        })
-      } else if (action.type === 'draw-start') {
+        // Check if there's already a running mermaid message for this page
+        const pageId = action.page!
+        const existingMessage = findRunningMessage(pageId, 'set-mermaid')
+        if (existingMessage) {
+          // Update existing message, keep it running until mermaid-end
+          // Don't create a new message
+        } else {
+        // No running message, create a new one (for backward compatibility)
+          push({
+            type: 'set-mermaid',
+            page: pageId,
+            id: uuid(),
+          })
+        }
+      } else if ((action as any).type === 'draw-start') {
+        const drawAction = action as any
         push({
           type: 'draw',
-          page: action.options.page!,
-          input: action.options.input!,
+          page: drawAction.options.page!,
+          input: drawAction.options.input!,
           id: uuid(),
           running: true,
         })
-      } else if (action.type === 'draw-end') {
+      } else if ((action as any).type === 'draw-end') {
+        const drawAction = action as any
         const messages = get()
-        ; (<Message>messages.at(-1)!).running = false
-        ; (<DrawMessage>messages.at(-1)!).result = action.options.result!
+          ; (<Message>messages.at(-1)!).running = false
+          ; (<DrawMessage>messages.at(-1)!).result = drawAction.options.result!
+      } else if (action.type === 'note-start') {
+        const pageId = action.page!
+        const messageId = uuid()
+        const message: Message = {
+          type: 'note',
+          page: pageId,
+          id: messageId,
+          running: true,
+        }
+        runningMessages.set(`note:${pageId}`, message)
+        push(message)
+      } else if (action.type === 'note-end') {
+        const pageId = action.page!
+        const message = findRunningMessage(pageId, 'note')
+        if (message) {
+          message.running = false
+          runningMessages.delete(`note:${pageId}`)
+        }
+      } else if (action.type === 'mermaid-start') {
+        const pageId = action.page!
+        const messageId = uuid()
+        const message: Message = {
+          type: 'set-mermaid',
+          page: pageId,
+          id: messageId,
+          running: true,
+        }
+        runningMessages.set(`mermaid:${pageId}`, message)
+        push(message)
+      } else if (action.type === 'mermaid-end') {
+        const pageId = action.page!
+        const message = findRunningMessage(pageId, 'set-mermaid')
+        if (message) {
+          message.running = false
+          runningMessages.delete(`mermaid:${pageId}`)
+        }
+      } else if (action.type === 'ggb-start') {
+        const pageId = action.page!
+        const messageId = uuid()
+        const message: Message = {
+          type: 'ggb',
+          page: pageId,
+          id: messageId,
+          running: true,
+        }
+        runningMessages.set(`ggb:${pageId}`, message)
+        push(message)
+      } else if (action.type === 'ggb-end') {
+        const pageId = action.page!
+        const message = findRunningMessage(pageId, 'ggb')
+        if (message) {
+          message.running = false
+          runningMessages.delete(`ggb:${pageId}`)
+        }
       }
     }
   }
