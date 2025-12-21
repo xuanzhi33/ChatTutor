@@ -12,9 +12,7 @@ WORKDIR /app
 # Copy package files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/agent/package.json ./packages/agent/
-COPY packages/mermaid/package.json ./packages/mermaid/
 COPY packages/shared/package.json ./packages/shared/
-COPY packages/pkg/package.json ./packages/pkg/
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
