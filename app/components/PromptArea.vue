@@ -210,16 +210,18 @@ defineExpose({
       </div>
       <div class="w-full flex flex-row mr-auto justify-end">
         <ButtonContainer
-          class="h-8 w-20 justify-center items-center flex"
+          class="h-8 justify-center items-center flex"
           :disabled="running || input.trim() === ''"
           @click="send"
         >
           <FontAwesomeIcon
             :icon="running ? faSpinner : faPaperPlane"
-            class="size-4 mr-2"
+            class="size-4"
             :class="{ 'animate-spin': running }"
           />
-          {{ t('chat.send') }}
+          <span class="ml-2 hidden md:inline">
+            {{ t('chat.send') }}
+          </span>
           
         </ButtonContainer>
       </div>
